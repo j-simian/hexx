@@ -6,7 +6,9 @@
 <title>Hexagonal Connect</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -140,7 +142,7 @@ canvas.grabbing { cursor: grabbing; }
 <div id="lobby">
   <div class="lobby-card">
     <h1><span class="hex-icon">&#x2B22;</span> Hexagonal Connect</h1>
-    <p class="subtitle">Peer-to-peer hex-grid strategy</p>
+    <p class="subtitle">Async hex-grid strategy</p>
 
     <div class="win-toggle">
       <label>Connect</label>
@@ -190,16 +192,33 @@ canvas.grabbing { cursor: grabbing; }
 </div>
 
 <script>
+// --- Firebase Init ---
+firebase.initializeApp({
+  apiKey: "AIzaSyA2hTySbERTlUag9qMF79sYxOzu5E569YE",
+  authDomain: "hexx-96cd9.firebaseapp.com",
+  databaseURL: "https://hexx-96cd9-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "hexx-96cd9",
+  storageBucket: "hexx-96cd9.firebasestorage.app",
+  messagingSenderId: "771952268121",
+  appId: "1:771952268121:web:229e7946a62a07cd64b248"
+});
+const auth = firebase.auth();
+const db = firebase.database();
+let myUid = null;
+
+// Sign in anonymously on load
+auth.signInAnonymously().then(cred => { myUid = cred.user.uid; }).catch(err => showError('Auth error: ' + err.message));
+auth.onAuthStateChanged(user => { if (user) myUid = user.uid; });
+
 // --- State ---
 let winCondition = 5;
-let peer = null, conn = null, isHost = false, roomCode = '';
+let isHost = false, roomCode = '';
 let myPlayer = 0; // 1 or 2
 let board = {}; // "q,r" -> player
-let currentPlayer = 1;
-let turnNumber = 0;
-let movesThisTurn = 0;
+let movesList = []; // ordered list of {q, r, player}
 let gameOver = false;
 let winningCells = [];
+let roomRef = null;
 
 // Camera
 let camX = 0, camY = 0, zoom = 1;
@@ -219,6 +238,34 @@ let touchId = null;
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let dpr = 1;
+
+// --- Derived turn state ---
+function getPlayerForMoveIndex(idx) {
+  if (idx === 0) return 1; // first move is always player 1
+  return (Math.floor((idx - 1) / 2) % 2 === 0) ? 2 : 1;
+}
+
+function getCurrentPlayer() {
+  return getPlayerForMoveIndex(movesList.length);
+}
+
+function getMovesLeftThisTurn() {
+  const n = movesList.length;
+  if (n === 0) return 1; // turn 0: player 1 gets 1 move
+  const cur = getCurrentPlayer();
+  // count how many consecutive moves at the tail belong to current player
+  let used = 0;
+  for (let i = n - 1; i >= 0; i--) {
+    if (getPlayerForMoveIndex(i) === cur) used++;
+    else break;
+  }
+  const maxMoves = (n === 0) ? 1 : 2;
+  return maxMoves - used;
+}
+
+function isMyTurn() {
+  return getCurrentPlayer() === myPlayer && !gameOver;
+}
 
 // --- Lobby ---
 function setWinCondition(n) {
@@ -240,58 +287,240 @@ function showError(msg) {
   el.classList.remove('hidden');
 }
 
-function createRoom() {
+async function createRoom() {
+  if (!myUid) { showError('Still authenticating, try again...'); return; }
   roomCode = genCode();
   isHost = true;
   myPlayer = 1;
-  document.getElementById('createBtn').classList.add('hidden');
+
   document.getElementById('create-section').classList.add('hidden');
   document.getElementById('room-info').classList.remove('hidden');
   document.getElementById('roomCodeDisplay').textContent = roomCode;
 
-  peer = new Peer('hexconn-' + roomCode);
-  peer.on('open', () => {
-    peer.on('connection', (c) => {
-      conn = c;
-      setupConnection();
-      conn.on('open', () => {
-        conn.send({ type: 'config', winCondition });
-        startGame();
-      });
+  roomRef = db.ref('rooms/' + roomCode);
+  try {
+    await roomRef.set({
+      host: myUid,
+      guest: null,
+      config: { winCondition, createdAt: firebase.database.ServerValue.TIMESTAMP },
+      status: 'waiting',
+      winner: null,
+      rematch: null
     });
-  });
-  peer.on('error', (err) => showError('Connection error: ' + err.type));
-}
+  } catch (err) {
+    showError('Failed to create room: ' + err.message);
+    return;
+  }
 
-function joinRoom(code) {
-  roomCode = (code || document.getElementById('joinInput').value).toUpperCase().trim();
-  if (roomCode.length < 3) { showError('Enter a valid room code'); return; }
-  isHost = false;
-  myPlayer = 2;
-
-  peer = new Peer();
-  peer.on('open', () => {
-    conn = peer.connect('hexconn-' + roomCode);
-    conn.on('open', () => {
-      setupConnection();
-    });
-    conn.on('error', () => showError('Could not connect to room'));
-  });
-  peer.on('error', (err) => showError('Connection error: ' + err.type));
-}
-
-function setupConnection() {
-  conn.on('data', (data) => {
-    if (data.type === 'config') {
-      winCondition = data.winCondition;
+  // Listen for guest joining
+  roomRef.child('guest').on('value', snap => {
+    if (snap.val() && !document.getElementById('lobby').classList.contains('hidden')) {
       startGame();
-    } else if (data.type === 'move') {
-      placeStone(data.q, data.r, true);
-    } else if (data.type === 'rematch') {
-      resetGame();
     }
   });
-  conn.on('close', () => {});
+
+  listenForGameUpdates();
+}
+
+async function joinRoom(code) {
+  if (!myUid) { showError('Still authenticating, try again...'); return; }
+  roomCode = (code || document.getElementById('joinInput').value).toUpperCase().trim();
+  if (roomCode.length < 3) { showError('Enter a valid room code'); return; }
+
+  roomRef = db.ref('rooms/' + roomCode);
+
+  // Read room data
+  const snap = await roomRef.once('value');
+  const room = snap.val();
+  if (!room) { showError('Room not found'); return; }
+  if (room.host === myUid) { showError('Cannot join your own room'); return; }
+  if (room.guest && room.guest !== myUid) { showError('Room is full'); return; }
+
+  isHost = false;
+  myPlayer = 2;
+  winCondition = room.config.winCondition;
+  setWinCondition(winCondition);
+
+  // Write guest + status atomically
+  if (!room.guest) {
+    try {
+      await roomRef.update({ guest: myUid, status: 'playing' });
+    } catch (err) {
+      showError('Failed to join: ' + err.message);
+      return;
+    }
+  }
+
+  // Replay any existing moves
+  const movesSnap = await roomRef.child('moves').once('value');
+  const movesData = movesSnap.val();
+  if (movesData) {
+    const indices = Object.keys(movesData).map(Number).sort((a, b) => a - b);
+    for (const idx of indices) {
+      const m = movesData[idx];
+      board[m.q + ',' + m.r] = m.player;
+      movesList.push({ q: m.q, r: m.r, player: m.player });
+    }
+    // Check if game was already won
+    for (const m of movesList) {
+      const wc = checkWin(m.q, m.r, m.player);
+      if (wc) {
+        gameOver = true;
+        winningCells = wc;
+      }
+    }
+  }
+
+  listenForGameUpdates();
+  startGame();
+}
+
+function listenForGameUpdates() {
+  // Listen for new moves (child_added fires for existing + new)
+  let initialLoad = true;
+  const existingCount = movesList.length;
+
+  roomRef.child('moves').on('child_added', snap => {
+    const idx = Number(snap.key);
+    // Skip moves we already loaded during join
+    if (idx < existingCount) return;
+
+    const m = snap.val();
+    const key = m.q + ',' + m.r;
+    if (board[key]) return; // already placed (our own move)
+
+    board[key] = m.player;
+    movesList[idx] = { q: m.q, r: m.r, player: m.player };
+
+    // Check win
+    const wc = checkWin(m.q, m.r, m.player);
+    if (wc) {
+      gameOver = true;
+      winningCells = wc;
+      const winnerName = m.player === myPlayer ? 'You win!' : 'Opponent wins!';
+      document.getElementById('winnerText').textContent = winnerName;
+      document.getElementById('winnerText').style.color = m.player === 1 ? 'var(--p1)' : 'var(--p2)';
+      document.getElementById('winner-banner').classList.remove('hidden');
+    }
+
+    updateUI();
+    render();
+  });
+
+  // Listen for winner (in case opponent sets it)
+  roomRef.child('winner').on('value', snap => {
+    const w = snap.val();
+    if (w && !gameOver) {
+      gameOver = true;
+      const winnerName = w === myPlayer ? 'You win!' : 'Opponent wins!';
+      document.getElementById('winnerText').textContent = winnerName;
+      document.getElementById('winnerText').style.color = w === 1 ? 'var(--p1)' : 'var(--p2)';
+      document.getElementById('winner-banner').classList.remove('hidden');
+      updateUI();
+      render();
+    }
+  });
+
+  // Listen for rematch
+  roomRef.child('rematch').on('value', snap => {
+    const val = snap.val();
+    if (!val) return;
+    // If opponent requested rematch and we also requested (or vice versa)
+    const opponentPlayer = myPlayer === 1 ? 2 : 1;
+    if (val === opponentPlayer) {
+      // Opponent wants rematch — show a note, or auto-accept
+      // For simplicity: if we also click rematch, we do the reset
+    } else if (val === 'reset') {
+      // Both agreed — reset the game
+      resetLocalGame();
+    }
+  });
+}
+
+async function placeStone(q, r) {
+  if (!isMyTurn()) return;
+  const key = q + ',' + r;
+  if (board[key]) return;
+
+  const idx = movesList.length;
+  const move = { q, r, player: myPlayer };
+
+  // Optimistic local update
+  board[key] = myPlayer;
+  movesList.push(move);
+
+  // Check win
+  const wc = checkWin(q, r, myPlayer);
+  if (wc) {
+    gameOver = true;
+    winningCells = wc;
+    const winnerName = 'You win!';
+    document.getElementById('winnerText').textContent = winnerName;
+    document.getElementById('winnerText').style.color = myPlayer === 1 ? 'var(--p1)' : 'var(--p2)';
+    document.getElementById('winner-banner').classList.remove('hidden');
+  }
+
+  updateUI();
+  render();
+
+  // Write to Firebase
+  const updates = {};
+  updates['moves/' + idx] = move;
+  if (gameOver) {
+    updates['winner'] = myPlayer;
+    updates['status'] = 'finished';
+  }
+
+  try {
+    await roomRef.update(updates);
+  } catch (err) {
+    // Rollback optimistic update on failure
+    delete board[key];
+    movesList.pop();
+    gameOver = false;
+    winningCells = [];
+    document.getElementById('winner-banner').classList.add('hidden');
+    updateUI();
+    render();
+    showError('Failed to send move: ' + err.message);
+  }
+}
+
+async function rematch() {
+  if (!roomRef) return;
+
+  // Check if opponent already requested
+  const snap = await roomRef.child('rematch').once('value');
+  const val = snap.val();
+  const opponentPlayer = myPlayer === 1 ? 2 : 1;
+
+  if (val === opponentPlayer) {
+    // Opponent already requested — do the reset
+    await roomRef.update({
+      moves: null,
+      winner: null,
+      status: 'playing',
+      rematch: 'reset'
+    });
+    // Clear reset flag after a moment so future rematches work
+    setTimeout(() => roomRef.child('rematch').set(null), 1000);
+    resetLocalGame();
+  } else {
+    // We request first
+    await roomRef.child('rematch').set(myPlayer);
+    document.querySelector('#winner-banner button').textContent = 'Waiting...';
+  }
+}
+
+function resetLocalGame() {
+  board = {};
+  movesList = [];
+  gameOver = false;
+  winningCells = [];
+  document.getElementById('winner-banner').classList.add('hidden');
+  document.querySelector('#winner-banner button').textContent = 'Rematch';
+  updateUI();
+  render();
 }
 
 function copyLink() {
@@ -307,7 +536,13 @@ function copyLink() {
 const params = new URLSearchParams(location.search);
 if (params.has('room')) {
   document.getElementById('joinInput').value = params.get('room');
-  setTimeout(() => joinRoom(params.get('room')), 500);
+  // Wait for auth before auto-joining
+  const unsub = auth.onAuthStateChanged(user => {
+    if (user) {
+      unsub();
+      joinRoom(params.get('room'));
+    }
+  });
 }
 
 // --- Game ---
@@ -321,90 +556,8 @@ function startGame() {
   render();
 }
 
-function resetGame() {
-  board = {};
-  currentPlayer = 1;
-  turnNumber = 0;
-  movesThisTurn = 0;
-  gameOver = false;
-  winningCells = [];
-  document.getElementById('winner-banner').classList.add('hidden');
-  updateUI();
-  render();
-}
-
-function maxMovesThisTurn() {
-  return turnNumber === 0 ? 1 : 2;
-}
-
-function isMyTurn() {
-  return currentPlayer === myPlayer && !gameOver;
-}
-
-function placeStone(q, r, fromNetwork) {
-  const key = q + ',' + r;
-  if (board[key]) return;
-  if (!fromNetwork && !isMyTurn()) return;
-  if (!fromNetwork && currentPlayer !== myPlayer) return;
-
-  board[key] = fromNetwork ? (myPlayer === 1 ? 2 : 1) : myPlayer;
-  const placedPlayer = board[key];
-  movesThisTurn++;
-
-  // Check win
-  const wc = checkWin(q, r, placedPlayer);
-  if (wc) {
-    gameOver = true;
-    winningCells = wc;
-    const winnerName = placedPlayer === myPlayer ? 'You win!' : 'Opponent wins!';
-    document.getElementById('winnerText').textContent = winnerName;
-    document.getElementById('winnerText').style.color = placedPlayer === 1 ? 'var(--p1)' : 'var(--p2)';
-    document.getElementById('winner-banner').classList.remove('hidden');
-  }
-
-  if (!fromNetwork && conn) {
-    conn.send({ type: 'move', q, r, player: myPlayer });
-  }
-
-  // Advance turn
-  if (movesThisTurn >= maxMovesThisTurn()) {
-    currentPlayer = currentPlayer === 1 ? 2 : 1;
-    movesThisTurn = 0;
-    turnNumber++;
-  }
-
-  updateUI();
-  render();
-}
-
-function checkWin(q, r, player) {
-  const dirs = [[1, 0], [0, 1], [1, -1]];
-  for (const [dq, dr] of dirs) {
-    let cells = [{ q, r }];
-    // Forward
-    for (let i = 1; i < winCondition; i++) {
-      const nq = q + dq * i, nr = r + dr * i;
-      if (board[nq + ',' + nr] === player) cells.push({ q: nq, r: nr });
-      else break;
-    }
-    // Backward
-    for (let i = 1; i < winCondition; i++) {
-      const nq = q - dq * i, nr = r - dr * i;
-      if (board[nq + ',' + nr] === player) cells.push({ q: nq, r: nr });
-      else break;
-    }
-    if (cells.length >= winCondition) return cells;
-  }
-  return null;
-}
-
-function rematch() {
-  resetGame();
-  if (conn) conn.send({ type: 'rematch' });
-}
-
 function updateUI() {
-  const ml = maxMovesThisTurn() - movesThisTurn;
+  const ml = getMovesLeftThisTurn();
   document.getElementById('movesLeft').textContent = 'Moves left: ' + ml;
   const ti = document.getElementById('turnIndicator');
   if (gameOver) {
@@ -417,6 +570,26 @@ function updateUI() {
     ti.textContent = 'Their Turn';
     ti.className = 'turn-indicator theirs';
   }
+}
+
+// --- Win Check ---
+function checkWin(q, r, player) {
+  const dirs = [[1, 0], [0, 1], [1, -1]];
+  for (const [dq, dr] of dirs) {
+    let cells = [{ q, r }];
+    for (let i = 1; i < winCondition; i++) {
+      const nq = q + dq * i, nr = r + dr * i;
+      if (board[nq + ',' + nr] === player) cells.push({ q: nq, r: nr });
+      else break;
+    }
+    for (let i = 1; i < winCondition; i++) {
+      const nq = q - dq * i, nr = r - dr * i;
+      if (board[nq + ',' + nr] === player) cells.push({ q: nq, r: nr });
+      else break;
+    }
+    if (cells.length >= winCondition) return cells;
+  }
+  return null;
 }
 
 // --- Hex Math ---
@@ -487,12 +660,10 @@ function render() {
   ctx.scale(zoom, zoom);
   ctx.translate(-camX, -camY);
 
-  // Visible range
   const margin = HEX_SIZE * 3;
   const tl = screenToWorld(0 - margin, 0 - margin);
   const br = screenToWorld(w + margin, h + margin);
 
-  // Estimate q/r range
   const qMin = Math.floor(tl.x / (HEX_SIZE * 1.5)) - 2;
   const qMax = Math.ceil(br.x / (HEX_SIZE * 1.5)) + 2;
   const rMin = Math.floor((tl.y / (HEX_SIZE * SQRT3)) - 1) - 2;
@@ -514,13 +685,9 @@ function render() {
         const borderW = isWin ? 2.5 : 1.5;
         drawHex(px, py, HEX_SIZE, color + fillAlpha, color + (isWin ? 'cc' : '80'), borderW);
 
-        // Stone
         ctx.beginPath();
         ctx.arc(px, py, HEX_SIZE * 0.38, 0, Math.PI * 2);
-        if (isWin) {
-          ctx.shadowColor = color;
-          ctx.shadowBlur = 12;
-        }
+        if (isWin) { ctx.shadowColor = color; ctx.shadowBlur = 12; }
         ctx.fillStyle = color;
         ctx.fill();
         ctx.shadowBlur = 0;
@@ -528,8 +695,7 @@ function render() {
         let fill = '#ffffff03';
         let stroke = '#ffffff10';
         if (isHover && isMyTurn()) {
-          const hc = myPlayer === 1 ? '#f0406020' : '#40a0f020';
-          fill = hc;
+          fill = myPlayer === 1 ? '#f0406020' : '#40a0f020';
           stroke = myPlayer === 1 ? '#f0406040' : '#40a0f040';
         }
         drawHex(px, py, HEX_SIZE, fill, stroke, 0.5);
@@ -579,9 +745,8 @@ window.addEventListener('mousemove', (e) => {
 
 window.addEventListener('mouseup', (e) => {
   if (isDragging && dragDist < 5) {
-    // Click
     if (hoverQ !== null && isMyTurn()) {
-      placeStone(hoverQ, hoverR, false);
+      placeStone(hoverQ, hoverR);
     }
   }
   isDragging = false;
@@ -645,7 +810,7 @@ canvas.addEventListener('touchend', (e) => {
     const my = t.clientY - rect.top;
     const world = screenToWorld(mx, my);
     const hex = pixelToHex(world.x, world.y);
-    if (isMyTurn()) placeStone(hex.q, hex.r, false);
+    if (isMyTurn()) placeStone(hex.q, hex.r);
   }
   isDragging = false;
   lastTouchDist = 0;
