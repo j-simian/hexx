@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hexagonal Connect</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --bg: #0a0a0c; --surface: #131318; --surface2: #1a1a22; --border: #2a2a35;
+  --text: #e8e6f0; --dim: #6b6880;
+  --p1: #f04060; --p2: #40a0f0; --accent: #a080ff;
+  --font-mono: 'JetBrains Mono', monospace; --font-heading: 'Space Grotesk', sans-serif;
+}
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font-mono); }
+.hidden { display: none !important; }
+
+/* Lobby */
+#lobby {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+}
+.lobby-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 40px; max-width: 420px; width: 90%; text-align: center;
+}
+.lobby-card h1 {
+  font-family: var(--font-heading); font-size: 28px; font-weight: 700; margin-bottom: 4px;
+}
+.lobby-card h1 .hex-icon { color: var(--accent); }
+.lobby-card .subtitle { color: var(--dim); font-size: 13px; margin-bottom: 28px; }
+
+.win-toggle { display: flex; gap: 8px; justify-content: center; margin-bottom: 24px; }
+.win-toggle label { color: var(--dim); font-size: 13px; display: flex; align-items: center; margin-right: 8px; }
+.win-toggle button {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--dim);
+  font-family: var(--font-mono); font-size: 14px; padding: 6px 16px; border-radius: 8px; cursor: pointer;
+  transition: all 0.15s;
+}
+.win-toggle button.active {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+
+.section { margin-bottom: 20px; }
+.section-label { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+
+button.primary {
+  background: var(--accent); color: #fff; border: none; font-family: var(--font-mono);
+  font-size: 14px; font-weight: 600; padding: 12px 24px; border-radius: 10px; cursor: pointer;
+  transition: opacity 0.15s; width: 100%;
+}
+button.primary:hover { opacity: 0.85; }
+
+.room-display {
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px; margin-bottom: 12px;
+}
+.room-code {
+  font-family: var(--font-heading); font-size: 32px; font-weight: 700; letter-spacing: 4px; color: var(--accent);
+}
+.waiting {
+  color: var(--dim); font-size: 13px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.waiting .dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.divider { color: var(--dim); font-size: 13px; margin: 20px 0; position: relative; }
+.divider::before, .divider::after {
+  content: ''; position: absolute; top: 50%; width: 35%; height: 1px; background: var(--border);
+}
+.divider::before { left: 0; }
+.divider::after { right: 0; }
+
+.join-row { display: flex; gap: 8px; }
+.join-row input {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; color: var(--text); font-family: var(--font-mono); font-size: 14px;
+  text-transform: uppercase; letter-spacing: 2px; outline: none;
+}
+.join-row input::placeholder { color: var(--dim); text-transform: none; letter-spacing: 0; }
+.join-row input:focus { border-color: var(--accent); }
+.join-row button {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+  font-family: var(--font-mono); font-size: 14px; padding: 10px 20px; border-radius: 8px; cursor: pointer;
+}
+.join-row button:hover { border-color: var(--accent); color: var(--accent); }
+
+.copy-btn {
+  background: none; border: 1px solid var(--border); color: var(--dim); font-family: var(--font-mono);
+  font-size: 12px; padding: 6px 14px; border-radius: 6px; cursor: pointer; margin-top: 8px;
+}
+.copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.error-msg { color: var(--p1); font-size: 12px; margin-top: 8px; }
+
+/* Game header */
+#header {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 10; height: 48px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
+}
+#header .logo { font-family: var(--font-heading); font-size: 16px; font-weight: 600; }
+#header .logo .hex-icon { color: var(--accent); }
+.status-bar { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+.moves-left { color: var(--dim); }
+.turn-indicator { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.turn-indicator.yours { background: #10b98120; color: #10b981; }
+.turn-indicator.theirs { background: #ffffff10; color: var(--dim); }
+.conn-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
+
+/* Coords */
+#coords {
+  position: fixed; bottom: 8px; left: 12px; z-index: 10;
+  font-size: 11px; color: var(--dim); pointer-events: none;
+}
+
+/* Winner banner */
+#winner-banner {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 50;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 32px 48px; text-align: center;
+}
+#winner-banner h2 { font-family: var(--font-heading); font-size: 24px; margin-bottom: 16px; }
+#winner-banner button { margin-top: 8px; }
+
+canvas { display: block; position: fixed; top: 48px; left: 0; cursor: grab; }
+canvas.grabbing { cursor: grabbing; }
+</style>
+</head>
+<body>
+
+<!-- Lobby -->
+<div id="lobby">
+  <div class="lobby-card">
+    <h1><span class="hex-icon">&#x2B22;</span> Hexagonal Connect</h1>
+    <p class="subtitle">Peer-to-peer hex-grid strategy</p>
+
+    <div class="win-toggle">
+      <label>Connect</label>
+      <button id="win5" class="active" onclick="setWinCondition(5)">5</button>
+      <button id="win6" onclick="setWinCondition(6)">6</button>
+    </div>
+
+    <div class="section" id="create-section">
+      <button class="primary" id="createBtn" onclick="createRoom()">Create Room</button>
+    </div>
+    <div class="section hidden" id="room-info">
+      <div class="room-display">
+        <div class="room-code" id="roomCodeDisplay"></div>
+        <div class="waiting"><span class="dot"></span> Waiting for opponent</div>
+      </div>
+      <button class="copy-btn" onclick="copyLink()">Copy Invite Link</button>
+    </div>
+
+    <div class="divider">or</div>
+
+    <div class="section">
+      <div class="join-row">
+        <input type="text" id="joinInput" placeholder="Room code" maxlength="6">
+        <button onclick="joinRoom()">Join</button>
+      </div>
+    </div>
+    <div class="error-msg hidden" id="errorMsg"></div>
+  </div>
+</div>
+
+<!-- Game UI -->
+<div id="header" class="hidden">
+  <div class="logo"><span class="hex-icon">&#x2B22;</span> Hexagonal Connect</div>
+  <div class="status-bar">
+    <span class="moves-left" id="movesLeft"></span>
+    <span class="turn-indicator" id="turnIndicator"></span>
+    <span class="conn-status"><span class="conn-dot"></span> Connected</span>
+  </div>
+</div>
+
+<canvas id="canvas" class="hidden"></canvas>
+<div id="coords" class="hidden">q: 0, r: 0</div>
+
+<div id="winner-banner" class="hidden">
+  <h2 id="winnerText"></h2>
+  <button class="primary" onclick="rematch()" style="width:auto;padding:10px 32px;">Rematch</button>
+</div>
+
+<script>
+// --- State ---
+let winCondition = 5;
+let peer = null, conn = null, isHost = false, roomCode = '';
+let myPlayer = 0; // 1 or 2
+let board = {}; // "q,r" -> player
+let currentPlayer = 1;
+let turnNumber = 0;
+let movesThisTurn = 0;
+let gameOver = false;
+let winningCells = [];
+
+// Camera
+let camX = 0, camY = 0, zoom = 1;
+const HEX_SIZE = 28;
+const SQRT3 = Math.sqrt(3);
+
+// Input
+let isDragging = false, dragStartX = 0, dragStartY = 0, dragDist = 0;
+let camStartX = 0, camStartY = 0;
+let hoverQ = null, hoverR = null;
+
+// Touch
+let lastTouchDist = 0;
+let touchId = null;
+
+// Canvas
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let dpr = 1;
+
+// --- Lobby ---
+function setWinCondition(n) {
+  winCondition = n;
+  document.getElementById('win5').classList.toggle('active', n === 5);
+  document.getElementById('win6').classList.toggle('active', n === 6);
+}
+
+function genCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let c = '';
+  for (let i = 0; i < 6; i++) c += chars[Math.floor(Math.random() * chars.length)];
+  return c;
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function createRoom() {
+  roomCode = genCode();
+  isHost = true;
+  myPlayer = 1;
+  document.getElementById('createBtn').classList.add('hidden');
+  document.getElementById('create-section').classList.add('hidden');
+  document.getElementById('room-info').classList.remove('hidden');
+  document.getElementById('roomCodeDisplay').textContent = roomCode;
+
+  peer = new Peer('hexconn-' + roomCode);
+  peer.on('open', () => {
+    peer.on('connection', (c) => {
+      conn = c;
+      setupConnection();
+      conn.on('open', () => {
+        conn.send({ type: 'config', winCondition });
+        startGame();
+      });
+    });
+  });
+  peer.on('error', (err) => showError('Connection error: ' + err.type));
+}
+
+function joinRoom(code) {
+  roomCode = (code || document.getElementById('joinInput').value).toUpperCase().trim();
+  if (roomCode.length < 3) { showError('Enter a valid room code'); return; }
+  isHost = false;
+  myPlayer = 2;
+
+  peer = new Peer();
+  peer.on('open', () => {
+    conn = peer.connect('hexconn-' + roomCode);
+    conn.on('open', () => {
+      setupConnection();
+    });
+    conn.on('error', () => showError('Could not connect to room'));
+  });
+  peer.on('error', (err) => showError('Connection error: ' + err.type));
+}
+
+function setupConnection() {
+  conn.on('data', (data) => {
+    if (data.type === 'config') {
+      winCondition = data.winCondition;
+      startGame();
+    } else if (data.type === 'move') {
+      placeStone(data.q, data.r, true);
+    } else if (data.type === 'rematch') {
+      resetGame();
+    }
+  });
+  conn.on('close', () => {});
+}
+
+function copyLink() {
+  const url = location.origin + location.pathname + '?room=' + roomCode;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy Invite Link', 2000);
+  });
+}
+
+// Auto-join
+const params = new URLSearchParams(location.search);
+if (params.has('room')) {
+  document.getElementById('joinInput').value = params.get('room');
+  setTimeout(() => joinRoom(params.get('room')), 500);
+}
+
+// --- Game ---
+function startGame() {
+  document.getElementById('lobby').classList.add('hidden');
+  document.getElementById('header').classList.remove('hidden');
+  canvas.classList.remove('hidden');
+  document.getElementById('coords').classList.remove('hidden');
+  resizeCanvas();
+  updateUI();
+  render();
+}
+
+function resetGame() {
+  board = {};
+  currentPlayer = 1;
+  turnNumber = 0;
+  movesThisTurn = 0;
+  gameOver = false;
+  winningCells = [];
+  document.getElementById('winner-banner').classList.add('hidden');
+  updateUI();
+  render();
+}
+
+function maxMovesThisTurn() {
+  return turnNumber === 0 ? 1 : 2;
+}
+
+function isMyTurn() {
+  return currentPlayer === myPlayer && !gameOver;
+}
+
+function placeStone(q, r, fromNetwork) {
+  const key = q + ',' + r;
+  if (board[key]) return;
+  if (!fromNetwork && !isMyTurn()) return;
+  if (!fromNetwork && currentPlayer !== myPlayer) return;
+
+  board[key] = fromNetwork ? (myPlayer === 1 ? 2 : 1) : myPlayer;
+  const placedPlayer = board[key];
+  movesThisTurn++;
+
+  // Check win
+  const wc = checkWin(q, r, placedPlayer);
+  if (wc) {
+    gameOver = true;
+    winningCells = wc;
+    const winnerName = placedPlayer === myPlayer ? 'You win!' : 'Opponent wins!';
+    document.getElementById('winnerText').textContent = winnerName;
+    document.getElementById('winnerText').style.color = placedPlayer === 1 ? 'var(--p1)' : 'var(--p2)';
+    document.getElementById('winner-banner').classList.remove('hidden');
+  }
+
+  if (!fromNetwork && conn) {
+    conn.send({ type: 'move', q, r, player: myPlayer });
+  }
+
+  // Advance turn
+  if (movesThisTurn >= maxMovesThisTurn()) {
+    currentPlayer = currentPlayer === 1 ? 2 : 1;
+    movesThisTurn = 0;
+    turnNumber++;
+  }
+
+  updateUI();
+  render();
+}
+
+function checkWin(q, r, player) {
+  const dirs = [[1, 0], [0, 1], [1, -1]];
+  for (const [dq, dr] of dirs) {
+    let cells = [{ q, r }];
+    // Forward
+    for (let i = 1; i < winCondition; i++) {
+      const nq = q + dq * i, nr = r + dr * i;
+      if (board[nq + ',' + nr] === player) cells.push({ q: nq, r: nr });
+      else break;
+    }
+    // Backward
+    for (let i = 1; i < winCondition; i++) {
+      const nq = q - dq * i, nr = r - dr * i;
+      if (board[nq + ',' + nr] === player) cells.push({ q: nq, r: nr });
+      else break;
+    }
+    if (cells.length >= winCondition) return cells;
+  }
+  return null;
+}
+
+function rematch() {
+  resetGame();
+  if (conn) conn.send({ type: 'rematch' });
+}
+
+function updateUI() {
+  const ml = maxMovesThisTurn() - movesThisTurn;
+  document.getElementById('movesLeft').textContent = 'Moves left: ' + ml;
+  const ti = document.getElementById('turnIndicator');
+  if (gameOver) {
+    ti.textContent = 'Game Over';
+    ti.className = 'turn-indicator theirs';
+  } else if (isMyTurn()) {
+    ti.textContent = 'Your Turn';
+    ti.className = 'turn-indicator yours';
+  } else {
+    ti.textContent = 'Their Turn';
+    ti.className = 'turn-indicator theirs';
+  }
+}
+
+// --- Hex Math ---
+function hexToPixel(q, r) {
+  const x = HEX_SIZE * 1.5 * q;
+  const y = HEX_SIZE * (SQRT3 / 2 * q + SQRT3 * r);
+  return { x, y };
+}
+
+function pixelToHex(px, py) {
+  const q = (2 / 3 * px) / HEX_SIZE;
+  const r = (-1 / 3 * px + SQRT3 / 3 * py) / HEX_SIZE;
+  return cubeRound(q, r);
+}
+
+function cubeRound(q, r) {
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return { q: rq, r: rr };
+}
+
+function screenToWorld(sx, sy) {
+  const cx = canvas.width / dpr / 2;
+  const cy = canvas.height / dpr / 2;
+  const wx = (sx - cx) / zoom + camX;
+  const wy = (sy - cy) / zoom + camY;
+  return { x: wx, y: wy };
+}
+
+// --- Rendering ---
+function resizeCanvas() {
+  dpr = window.devicePixelRatio || 1;
+  const w = window.innerWidth;
+  const h = window.innerHeight - 48;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  render();
+}
+
+function drawHex(cx, cy, size, fillStyle, strokeStyle, lineWidth) {
+  ctx.beginPath();
+  const inset = size - 2;
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 180 * (60 * i);
+    const hx = cx + inset * Math.cos(angle);
+    const hy = cy + inset * Math.sin(angle);
+    if (i === 0) ctx.moveTo(hx, hy);
+    else ctx.lineTo(hx, hy);
+  }
+  ctx.closePath();
+  if (fillStyle) { ctx.fillStyle = fillStyle; ctx.fill(); }
+  if (strokeStyle) { ctx.strokeStyle = strokeStyle; ctx.lineWidth = lineWidth || 1; ctx.stroke(); }
+}
+
+function render() {
+  const w = canvas.width / dpr;
+  const h = canvas.height / dpr;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-camX, -camY);
+
+  // Visible range
+  const margin = HEX_SIZE * 3;
+  const tl = screenToWorld(0 - margin, 0 - margin);
+  const br = screenToWorld(w + margin, h + margin);
+
+  // Estimate q/r range
+  const qMin = Math.floor(tl.x / (HEX_SIZE * 1.5)) - 2;
+  const qMax = Math.ceil(br.x / (HEX_SIZE * 1.5)) + 2;
+  const rMin = Math.floor((tl.y / (HEX_SIZE * SQRT3)) - 1) - 2;
+  const rMax = Math.ceil((br.y / (HEX_SIZE * SQRT3)) + 1) + 2;
+
+  const winSet = new Set(winningCells.map(c => c.q + ',' + c.r));
+
+  for (let q = qMin; q <= qMax; q++) {
+    for (let r = rMin; r <= rMax; r++) {
+      const { x: px, y: py } = hexToPixel(q, r);
+      const key = q + ',' + r;
+      const occupant = board[key];
+      const isWin = winSet.has(key);
+      const isHover = hoverQ === q && hoverR === r;
+
+      if (occupant) {
+        const color = occupant === 1 ? '#f04060' : '#40a0f0';
+        const fillAlpha = isWin ? '40' : '18';
+        const borderW = isWin ? 2.5 : 1.5;
+        drawHex(px, py, HEX_SIZE, color + fillAlpha, color + (isWin ? 'cc' : '80'), borderW);
+
+        // Stone
+        ctx.beginPath();
+        ctx.arc(px, py, HEX_SIZE * 0.38, 0, Math.PI * 2);
+        if (isWin) {
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 12;
+        }
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else {
+        let fill = '#ffffff03';
+        let stroke = '#ffffff10';
+        if (isHover && isMyTurn()) {
+          const hc = myPlayer === 1 ? '#f0406020' : '#40a0f020';
+          fill = hc;
+          stroke = myPlayer === 1 ? '#f0406040' : '#40a0f040';
+        }
+        drawHex(px, py, HEX_SIZE, fill, stroke, 0.5);
+      }
+    }
+  }
+
+  // Origin marker
+  ctx.beginPath();
+  ctx.arc(0, 0, 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff20';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// --- Input ---
+canvas.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  dragDist = 0;
+  camStartX = camX;
+  camStartY = camY;
+  canvas.classList.add('grabbing');
+});
+
+window.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const world = screenToWorld(mx, my);
+  const hex = pixelToHex(world.x, world.y);
+  hoverQ = hex.q;
+  hoverR = hex.r;
+  document.getElementById('coords').textContent = 'q: ' + hoverQ + ', r: ' + hoverR;
+
+  if (isDragging) {
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    dragDist = Math.sqrt(dx * dx + dy * dy);
+    camX = camStartX - dx / zoom;
+    camY = camStartY - dy / zoom;
+  }
+  render();
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (isDragging && dragDist < 5) {
+    // Click
+    if (hoverQ !== null && isMyTurn()) {
+      placeStone(hoverQ, hoverR, false);
+    }
+  }
+  isDragging = false;
+  canvas.classList.remove('grabbing');
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  zoom = Math.max(0.25, Math.min(4, zoom * factor));
+  render();
+}, { passive: false });
+
+// Touch
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) {
+    const t = e.touches[0];
+    isDragging = true;
+    dragStartX = t.clientX;
+    dragStartY = t.clientY;
+    dragDist = 0;
+    camStartX = camX;
+    camStartY = camY;
+    touchId = t.identifier;
+  } else if (e.touches.length === 2) {
+    isDragging = false;
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+  }
+}, { passive: true });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 1 && isDragging) {
+    const t = e.touches[0];
+    const dx = t.clientX - dragStartX;
+    const dy = t.clientY - dragStartY;
+    dragDist = Math.sqrt(dx * dx + dy * dy);
+    camX = camStartX - dx / zoom;
+    camY = camStartY - dy / zoom;
+    render();
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (lastTouchDist > 0) {
+      const factor = dist / lastTouchDist;
+      zoom = Math.max(0.25, Math.min(4, zoom * factor));
+      render();
+    }
+    lastTouchDist = dist;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  if (e.changedTouches.length && isDragging && dragDist < 10) {
+    const t = e.changedTouches[0];
+    const rect = canvas.getBoundingClientRect();
+    const mx = t.clientX - rect.left;
+    const my = t.clientY - rect.top;
+    const world = screenToWorld(mx, my);
+    const hex = pixelToHex(world.x, world.y);
+    if (isMyTurn()) placeStone(hex.q, hex.r, false);
+  }
+  isDragging = false;
+  lastTouchDist = 0;
+});
+
+window.addEventListener('resize', resizeCanvas);
+</script>
+</body>
+</html>
