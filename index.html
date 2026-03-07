@@ -333,16 +333,27 @@ async function joinRoom(code) {
   const snap = await roomRef.once('value');
   const room = snap.val();
   if (!room) { showError('Room not found'); return; }
-  if (room.host === myUid) { showError('Cannot join your own room'); return; }
-  if (room.guest && room.guest !== myUid) { showError('Room is full'); return; }
 
-  isHost = false;
-  myPlayer = 2;
+  // Determine role: rejoin as host, rejoin as guest, or join as new guest
+  if (room.host === myUid) {
+    isHost = true;
+    myPlayer = 1;
+  } else if (room.guest === myUid) {
+    isHost = false;
+    myPlayer = 2;
+  } else if (room.guest) {
+    showError('Room is full');
+    return;
+  } else {
+    isHost = false;
+    myPlayer = 2;
+  }
+
   winCondition = room.config.winCondition;
   setWinCondition(winCondition);
 
-  // Write guest + status atomically
-  if (!room.guest) {
+  // Write guest + status atomically if joining as new guest
+  if (!isHost && !room.guest) {
     try {
       await roomRef.update({ guest: myUid, status: 'playing' });
     } catch (err) {
