@@ -3,7 +3,9 @@ import { InputHandler } from "./input.js";
 import { Net } from "./net.js";
 import { Game } from "./game.js";
 
-const net = new Net();
+const debug = new URLSearchParams(location.search).get("debug");
+
+const net = new Net(debug);
 
 let myPlayer;
 let roomCode;
@@ -53,7 +55,6 @@ function onGameOver(winner) {
 }
 
 function startGame() {
-  const debug = new URLSearchParams(location.search).get("debug");
 
   showState("game");
   const canvas = document.getElementById("canvas");
