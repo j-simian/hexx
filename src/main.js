@@ -33,8 +33,8 @@ function onPlaceStone(q, r, numMovesRemaining) {
   document.getElementById("moves-remaining").innerHTML = `${numMovesRemaining} ${moves} remaining`;
 }
 
-function setCurrentPlayer(turnIndex, currentPlayer) {
-  document.getElementById("turn-indicator").innerHTML = currentPlayer == myPlayer ? `Your turn` : `Their turn`;
+function setCurrentPlayer(_turnIndex, currentPlayer) {
+  document.getElementById("turn-indicator").innerHTML = currentPlayer == myPlayer ? `Your turn 🔴` : `Their turn`;
 }
 
 function sendPlaceStone(q, r, player) {
