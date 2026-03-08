@@ -17,7 +17,7 @@ function showState(state) {
 function setOpponentStatus(connected, roomCode = null) {
   const el = document.getElementById("opponent-status");
   if (connected) {
-    el.innerHTML = "Opponent connected";
+    el.innerHTML = "Opponent connected 🟢";
   } else {
     document.getElementById("join-code-preview").innerHTML = roomCode;
     document.getElementById("copy-join-link").addEventListener("click", () => {
@@ -33,8 +33,8 @@ function onPlaceStone(q, r, numMovesRemaining) {
   document.getElementById("moves-remaining").innerHTML = `${numMovesRemaining} ${moves} remaining`;
 }
 
-function setCurrentPlayer(turnIndex, currentPlayer) {
-  document.getElementById("turn-indicator").innerHTML = currentPlayer == myPlayer ? `Your turn` : `Their turn`;
+function setCurrentPlayer(_turnIndex, currentPlayer) {
+  document.getElementById("turn-indicator").innerHTML = currentPlayer == myPlayer ? `Your turn 🔴` : `Their turn`;
 }
 
 function sendPlaceStone(q, r, player) {
@@ -48,6 +48,8 @@ function sendPlaceStone(q, r, player) {
 function onGameOver(winner) {
   const msg = winner === myPlayer ? "You win!" : "You lose!";
   document.getElementById("opponent-status").innerHTML = msg;
+  document.getElementById("game-over-text").innerHTML = msg;
+  document.getElementById("game-over-modal").hidden = false;
 }
 
 function startGame() {
