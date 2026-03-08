@@ -17,7 +17,7 @@ function showState(state) {
 function setOpponentStatus(connected, roomCode = null) {
   const el = document.getElementById("opponent-status");
   if (connected) {
-    el.innerHTML = "Opponent connected";
+    el.innerHTML = "Opponent connected 🟢";
   } else {
     document.getElementById("join-code-preview").innerHTML = roomCode;
     document.getElementById("copy-join-link").addEventListener("click", () => {
