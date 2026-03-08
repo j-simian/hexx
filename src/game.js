@@ -11,6 +11,7 @@ export class Game {
 
   myPlayer;
   winner;
+  debug;
 
   onPlaceStone;
   onTurnChange;
@@ -48,13 +49,14 @@ export class Game {
 
   moves = {};
 
-  constructor(myPlayer, onPlaceStone, onTurnChange, sendPlaceStone, onGameOver) {
+  constructor(myPlayer, onPlaceStone, onTurnChange, sendPlaceStone, onGameOver, debug) {
     this.onPlaceStone = onPlaceStone;
     this.onTurnChange = onTurnChange;
     this.sendPlaceStone = sendPlaceStone;
     this.onGameOver = onGameOver;
 
     this.myPlayer = myPlayer;
+    this.debug = debug;
 
     this.winCondition = 5;
     this.turnIndex = 0;
@@ -68,6 +70,7 @@ export class Game {
     this.turnIndex += 1;
     this.numMovesRemaining = this.numMovesPerTurn(this.turnIndex);
     this.currentPlayer = this.currentPlayer % 2 + 1;
+    if (this.debug) { this.myPlayer = this.currentPlayer }
     this.onTurnChange(this.turnIndex, this.currentPlayer);
   }
 
