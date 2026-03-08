@@ -29,6 +29,7 @@ export class Net {
   async signIn() {
     const result = await firebase.auth().signInAnonymously();
     this.uid = result.user.uid;
+    console.log(`Signed in with UID: ${this.uid}`);
   }
 
   async createRoom() {
@@ -64,6 +65,15 @@ export class Net {
     });
   }
 
-  sendMove(roomCode, q, r, player) { }
-  onMove(roomCode, callback) { }
+  sendMove(roomCode, q, r, player) {
+    this.db.ref(`rooms/${roomCode}/moves`).push({ q, r, player });
+  }
+
+  onMove(roomCode, callback) {
+    this.db.ref(`rooms/${roomCode}/moves`).on("child_added", (snapshot) => {
+      let val = snapshot.val();
+      console.log(val);
+      callback(val);
+    });
+  }
 }

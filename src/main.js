@@ -1,10 +1,12 @@
 import { Renderer } from "./render.js";
 import { InputHandler } from "./input.js";
 import { Net } from "./net.js";
+import { Game } from "./game.js";
 
 const net = new Net();
-let renderer;
-let inputHandler;
+
+let myPlayer;
+let roomCode;
 
 function showState(state) {
   for (const el of document.querySelectorAll("[data-state]")) {
@@ -12,34 +14,65 @@ function showState(state) {
   }
 }
 
-function setOpponentStatus(connected, code = null) {
+function setOpponentStatus(connected, roomCode = null) {
   const el = document.getElementById("opponent-status");
   if (connected) {
     el.innerHTML = "Opponent connected";
   } else {
-    document.getElementById("join-code-preview").innerHTML = code;
+    document.getElementById("join-code-preview").innerHTML = roomCode;
     document.getElementById("copy-join-link").addEventListener("click", () => {
-      const url = `${location.origin}${location.pathname}?room=${code}`;
+      const url = `${location.origin}${location.pathname}?room=${roomCode}`;
       navigator.clipboard.writeText(url);
       document.getElementById("copy-join-link").innerHTML = "Copied!";
     });
   }
 }
 
+function onPlaceStone(q, r, numMovesRemaining) {
+  let moves = numMovesRemaining == 1 ? "move" : "moves";
+  document.getElementById("moves-remaining").innerHTML = `${numMovesRemaining} ${moves} remaining`;
+}
+
+function setCurrentPlayer(turnIndex, currentPlayer) {
+  document.getElementById("turn-indicator").innerHTML = currentPlayer == myPlayer ? `Your turn` : `Their turn`;
+}
+
+function sendPlaceStone(q, r, player) {
+  if (player != this.myPlayer) {
+    console.log("wrong player?");
+    return;
+  }
+  net.sendMove(roomCode, q, r, myPlayer);
+}
+
+function onGameOver(winner) {
+  const msg = winner === myPlayer ? "You win!" : "You lose!";
+  document.getElementById("opponent-status").innerHTML = msg;
+}
+
 function startGame() {
-  showState("game");
   const debug = new URLSearchParams(location.search).get("debug");
+
+  showState("game");
   const canvas = document.getElementById("canvas");
-  renderer = new Renderer(30, "#bdb5a6", canvas);
-  inputHandler = new InputHandler(renderer.camera);
-  window.addEventListener("resize", () => renderer.handleResize(canvas));
-  inputHandler.registerHandlers(canvas);
+
+  let renderer = new Renderer(30, "#bdb5a6", canvas);
+  let game = new Game(myPlayer, onPlaceStone, setCurrentPlayer, sendPlaceStone, onGameOver);
+
+  let onHexClick = (q, r) => game.tryPlaceStone(q, r);
+  let inputHandler = new InputHandler(renderer.camera, renderer.radius, onHexClick);
+
+  net.onMove(roomCode, ({ q, r, player }) => {
+    game.placeStone(q, r, player);
+  });
+
   let uiState = { debug, hovered: null };
+  inputHandler.registerHandlers(canvas);
 
   function loop() {
     renderer.clear();
     uiState.hovered = inputHandler.hovered;
-    renderer.renderGrid(uiState);
+    renderer.renderGrid(uiState, game.moves);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
@@ -52,15 +85,17 @@ async function initLobby() {
   if (room) document.getElementById("join-code").value = room;
 
   document.getElementById("btn-create").addEventListener("click", async () => {
-    const code = await net.createRoom();
+    roomCode = await net.createRoom();
+    myPlayer = 1;
     startGame();
-    setOpponentStatus(false, code);
-    net.onOpponentJoin(code, () => setOpponentStatus(true));
+    setOpponentStatus(false, roomCode);
+    net.onOpponentJoin(roomCode, () => setOpponentStatus(true));
   });
 
   document.getElementById("btn-join").addEventListener("click", async () => {
-    const code = document.getElementById("join-code").value;
-    const { config, player } = await net.joinRoom(code);
+    roomCode = document.getElementById("join-code").value;
+    const { config, player } = await net.joinRoom(roomCode);
+    myPlayer = player;
     startGame();
     setOpponentStatus(true);
   });

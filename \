@@ -1,0 +1,102 @@
+const AXES = [
+  { dq: 1, dr: 0 },
+  { dq: 0, dr: 1 },
+  { dq: 1, dr: -1 },
+];
+
+export class Game {
+  currentPlayer;
+  numMovesRemaining;
+  turnIndex;
+
+  myPlayer;
+  winner;
+
+  onPlaceStone;
+  onTurnChange;
+  sendPlaceStone;
+
+  winCondition;
+
+  numMovesPerTurn(turnIndex) {
+    switch (turnIndex) {
+      case 0:
+        return 1;
+      default:
+        return 2;
+    }
+  }
+
+  checkWin(q, r, player) {
+    for (const { dq, dr } of AXES) {
+      let count = 1;
+
+      for (let i = 1; i < this.winCondition; i++) {
+        if (this.moves[`${q + dq * i},${r + dr * i}`] === player) count++;
+        else break;
+      }
+
+      for (let i = 1; i < this.winCondition; i++) {
+        if (this.moves[`${q - dq * i},${r - dr * i}`] === player) count++;
+        else break;
+      }
+
+      if (count >= this.winCondition) return true;
+    }
+    return false;
+  }
+
+  moves = {};
+
+  constructor(myPlayer, onPlaceStone, onTurnChange, sendPlaceStone) {
+    this.onPlaceStone = onPlaceStone;
+    this.onTurnChange = onTurnChange;
+    this.sendPlaceStone = sendPlaceStone;
+
+    this.myPlayer = myPlayer;
+
+    this.winCondition = 5;
+    this.turnIndex = 0;
+    this.numMovesRemaining = this.numMovesPerTurn(this.turnIndex);
+    this.currentPlayer = 1;
+
+    this.onTurnChange(this.turnIndex, this.currentPlayer);
+  }
+
+  nextTurn() {
+    this.turnIndex += 1;
+    this.numMovesRemaining = this.numMovesPerTurn(this.turnIndex);
+    this.currentPlayer = this.currentPlayer % 2 + 1;
+    this.onTurnChange(this.turnIndex, this.currentPlayer);
+  }
+
+  tryPlaceStone(q, r) {
+    if (this.currentPlayer != this.myPlayer) {
+      console.log(`Not your turn! current: ${this.currentPlayer}, you: ${this.myPlayer}`);
+      return;
+    }
+    let current = this.moves[`${q},${r}`];
+    if (current) {
+      console.log("Cannot! there is a stone there");
+    } else {
+      console.log(`Placing stone: ${q}, ${r}`);
+      this.sendPlaceStone(q, r, this.myPlayer);
+    }
+  }
+
+  placeStone(q, r, player) {
+    this.moves[`${q},${r}`] = player;
+
+    if (this.checkWin(q, r, player)) {
+      this.winner = player;
+      this.onGameOver(player);
+      return;
+    }
+
+    this.numMovesRemaining -= 1;
+    if (this.numMovesRemaining == 0) {
+      this.nextTurn();
+    }
+    this.onPlaceStone(q, r, this.numMovesRemaining);
+  }
+}

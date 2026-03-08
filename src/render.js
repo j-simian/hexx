@@ -34,21 +34,32 @@ export class Renderer {
     this.context.closePath();
   }
 
-  renderHex(sx, sy, q, r, uiState) {
+  renderHex(sx, sy, debug, hovered, stone) {
     this.pathHex(sx, sy);
-    if (uiState.hovered && uiState.hovered.q == q && uiState.hovered.r == r) {
+    if (hovered) {
       this.context.fillStyle = `${this.edge_colour}88`;
       this.context.fill();
     }
     this.context.strokeStyle = this.edge_colour;
     this.context.stroke();
-    if (uiState.debug) {
+    if (debug) {
       this.context.fillStyle = "#000000";
       this.context.fillText(`${q}, ${r}`, sx, sy);
     }
+    this.context.beginPath();
+    this.context.ellipse(sx, sy, this.radius / 1.8, this.radius / 1.8, Math.PI * 2, 0, Math.PI * 2);
+    this.context.closePath();
+    if (stone == 1) {
+      this.context.fillStyle = "#c1666b";
+      this.context.fill();
+    }
+    if (stone == 2) {
+      this.context.fillStyle = "#4a7c8a";
+      this.context.fill();
+    }
   }
 
-  renderGrid(uiState) {
+  renderGrid(uiState, moves) {
     const xMin = -this.camera.x;
     const xMax = -this.camera.x + this.width;
     const yMin = -this.camera.y;
@@ -63,7 +74,9 @@ export class Renderer {
         let { x, y } = hexToPixel(q, r, this.radius);
         let sx = x + this.camera.x;
         let sy = y + this.camera.y;
-        this.renderHex(sx, sy, q, r, uiState);
+        let hovered = uiState.hovered && uiState.hovered.q == q && uiState.hovered.r == r;
+        let stone = moves[`${q},${r}`];
+        this.renderHex(sx, sy, uiState.debug, hovered, stone);
       }
     }
   }
@@ -79,18 +92,15 @@ export class Renderer {
     canvas.height = this.height;
   }
 
+
   constructor(radius, edge_colour, canvas) {
     this.radius = radius;
     this.edge_colour = edge_colour;
 
-    this.width = window.innerWidth;
-    this.height = window.innerHeight;
-
-    canvas.width = this.width;
-    canvas.height = this.height;
+    this.handleResize(canvas);
+    window.addEventListener("resize", () => this.handleResize(canvas));
 
     this.context = canvas.getContext("2d");
-
     this.camera = new Camera((this.width / 2), (this.height / 2));
   }
 }
