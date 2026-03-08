@@ -1,0 +1,171 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body,
+.state-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Funnel Sans", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 300;
+  font-style: normal;
+  background-color: #F0EFEB;
+  color: #2a2a28;
+}
+
+/* ---- Card ---- */
+
+.form-container {
+  border-radius: 12px;
+  padding: 40px 36px;
+  background-color: #E6E1D8;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+  width: 300px;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+/* ---- Typography ---- */
+
+h1 {
+  font-family: "Funnel Display", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  font-style: normal;
+  font-size: 2.5rem;
+  letter-spacing: -0.5px;
+  margin-bottom: 4px;
+}
+
+/* ---- Buttons ---- */
+
+button {
+  background-color: #F0EFEB;
+  border: 1px solid #d4c6be;
+  border-radius: 8px;
+  padding: 10px 24px;
+  font-family: "Funnel Sans", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: #2a2a28;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+button:hover {
+  background-color: #e8e4dc;
+}
+
+button:active {
+  background-color: #d4c6be;
+}
+
+/* ---- Join row ---- */
+
+.join-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.join-row input {
+  flex: 1;
+  min-width: 0;
+  background-color: transparent;
+  border: 0;
+  border-bottom: 1px solid #d4c6be;
+  padding: 8px 0;
+  font-family: "Funnel Sans", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 300;
+  color: #2a2a28;
+  outline: none;
+}
+
+.join-row input::placeholder {
+  color: #a8a099;
+}
+
+.join-row input:focus {
+  border-bottom-color: #2a2a28;
+}
+
+/* ---- Status bar ---- */
+
+.status-bar {
+  width: 100%;
+  min-height: 50px;
+  background-color: #E6E1D8;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.06);
+  position: fixed;
+  top: 0;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  flex-direction: row;
+}
+
+.header-text {
+  padding-inline: 20px;
+}
+
+.status-elt {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding-inline: 20px;
+}
+
+#opponent-status {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  padding-inline: 5px;
+}
+
+#opponent-status>span {
+  padding-inline: 8px;
+}
+
+#join-code-preview {
+  font-family: monospace;
+  background-color: #F0EFEB;
+  border-radius: 5px;
+  padding-inline: 12px;
+}
+
+#copy-join-link {
+  height: 2rem;
+  padding: 0.2rem;
+}
+
+/* Game container */
+
+.game-container {
+  width: 100%;
+  height: 100%;
+}
