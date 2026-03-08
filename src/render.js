@@ -34,7 +34,7 @@ export class Renderer {
     this.context.closePath();
   }
 
-  renderHex(sx, sy, debug, hovered, stone) {
+  renderHex(sx, sy, debug, hovered, stone, q, r) {
     this.pathHex(sx, sy, this.radius);
     if (hovered) {
       this.context.fillStyle = `${this.edge_colour}88`;
@@ -76,7 +76,7 @@ export class Renderer {
         let sy = y + this.camera.y;
         let hovered = uiState.hovered && uiState.hovered.q == q && uiState.hovered.r == r;
         let stone = moves[`${q},${r}`];
-        this.renderHex(sx, sy, uiState.debug, hovered, stone);
+        this.renderHex(sx, sy, uiState.debug, hovered, stone, q, r);
       }
     }
   }

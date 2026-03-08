@@ -1,9 +1,12 @@
 import { Renderer } from "./render.js";
 import { InputHandler } from "./input.js";
 import { Net } from "./net.js";
+import { LocalNet } from "./localnet.js";
 import { Game } from "./game.js";
 
-const net = new Net();
+const debug = new URLSearchParams(location.search).get("debug");
+
+const net = debug ? new LocalNet() : new Net();
 
 let myPlayer;
 let roomCode;
@@ -34,6 +37,7 @@ function onPlaceStone(q, r, numMovesRemaining) {
 }
 
 function setCurrentPlayer(_turnIndex, currentPlayer) {
+  this.myPlayer = currentPlayer;
   document.getElementById("turn-indicator").innerHTML = currentPlayer == myPlayer ? `Your turn 🔴` : `Their turn`;
 }
 
@@ -42,7 +46,7 @@ function sendPlaceStone(q, r, player) {
     console.log("wrong player?");
     return;
   }
-  net.sendMove(roomCode, q, r, myPlayer);
+  net.sendMove(roomCode, q, r, this.myPlayer);
 }
 
 function onGameOver(winner) {
@@ -53,13 +57,12 @@ function onGameOver(winner) {
 }
 
 function startGame() {
-  const debug = new URLSearchParams(location.search).get("debug");
 
   showState("game");
   const canvas = document.getElementById("canvas");
 
   let renderer = new Renderer(30, "#bdb5a6", canvas);
-  let game = new Game(myPlayer, onPlaceStone, setCurrentPlayer, sendPlaceStone, onGameOver);
+  let game = new Game(myPlayer, onPlaceStone, setCurrentPlayer, sendPlaceStone, onGameOver, debug);
 
   let onHexClick = (q, r) => game.tryPlaceStone(q, r);
   let inputHandler = new InputHandler(renderer.camera, renderer.radius, onHexClick);
