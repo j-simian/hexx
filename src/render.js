@@ -20,11 +20,11 @@ export class Renderer {
 
   camera;
 
-  pathHex(centerX, centerY) {
+  pathHex(centerX, centerY, radius) {
     this.context.beginPath();
     for (let theta = 0; theta < Math.PI * 2; theta += Math.PI / 3) {
-      let x = centerX + this.radius * Math.sin(theta);
-      let y = centerY + this.radius * Math.cos(theta);
+      let x = centerX + radius * Math.sin(theta);
+      let y = centerY + radius * Math.cos(theta);
       if (theta == 0) {
         this.context.moveTo(x, y);
       } else {
@@ -35,7 +35,7 @@ export class Renderer {
   }
 
   renderHex(sx, sy, debug, hovered, stone) {
-    this.pathHex(sx, sy);
+    this.pathHex(sx, sy, this.radius);
     if (hovered) {
       this.context.fillStyle = `${this.edge_colour}88`;
       this.context.fill();
@@ -47,7 +47,7 @@ export class Renderer {
       this.context.fillText(`${q}, ${r}`, sx, sy);
     }
     this.context.beginPath();
-    this.context.ellipse(sx, sy, this.radius / 1.8, this.radius / 1.8, Math.PI * 2, 0, Math.PI * 2);
+    this.pathHex(sx, sy, this.radius / 1.5);
     this.context.closePath();
     if (stone == 1) {
       this.context.fillStyle = "#c1666b";
