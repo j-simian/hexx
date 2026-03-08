@@ -1,6 +1,5 @@
 import { pixelToHex } from "./hex.js";
 
-
 export class InputHandler {
   camera;
   hovered;
@@ -13,8 +12,12 @@ export class InputHandler {
   dragging = false;
 
   getXY(e) {
-    if (e.changedTouches) return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
-    if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    if (e.changedTouches) {
+      return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+    }
+    if (e.touches) {
+      return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
     return { x: e.clientX, y: e.clientY };
   }
 
@@ -43,6 +46,8 @@ export class InputHandler {
     this.dragging = true;
     this.dragStartX = x;
     this.dragStartY = y;
+    this.lastX = x;
+    this.lastY = y;
   }
 
   onUp(e) {
