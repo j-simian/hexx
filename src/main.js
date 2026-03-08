@@ -48,6 +48,8 @@ function sendPlaceStone(q, r, player) {
 function onGameOver(winner) {
   const msg = winner === myPlayer ? "You win!" : "You lose!";
   document.getElementById("opponent-status").innerHTML = msg;
+  document.getElementById("game-over-text").innerHTML = msg;
+  document.getElementById("game-over-modal").hidden = false;
 }
 
 function startGame() {
